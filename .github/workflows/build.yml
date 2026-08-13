@@ -35,16 +35,31 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_15.4.app
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen 2.40.1
+        # PINNED, like the Xcode version and for the same reason.
+        #
+        # `brew install xcodegen` gives the current release, which writes
+        # objectVersion 77 (Xcode 16 format) and ignores the objectVersion
+        # option in project.yml. Xcode 15.4 cannot read that, and says so only
+        # as "Unable to read project" with no mention of a version.
+        #
+        # 2.40.1 (April 2024) predates Xcode 16, so it emits a format the
+        # pinned toolchain parses. Three pins now move together -- runner
+        # image, Xcode, and XcodeGen -- all forced by the iOS 12 target.
+        run: |
+          curl -fsSL -o xcodegen.zip \
+            https://github.com/yonaskolb/XcodeGen/releases/download/2.40.1/xcodegen.zip
+          unzip -q xcodegen.zip
+          echo "$PWD/xcodegen/bin" >> "$GITHUB_PATH"
+          ./xcodegen/bin/xcodegen --version
 
       - name: Generate project
-        # The compatibility line is printed because a mismatch between it and
-        # the pinned Xcode surfaces only as "Unable to read project", with no
-        # hint that the format is the problem.
+        # The object version is printed because a mismatch between it and the
+        # pinned Xcode surfaces only as "Unable to read project", with no hint
+        # that the format is the problem.
         run: |
           xcodegen generate
-          grep -m1 'objectVersion\|compatibilityVersion' Midstream.xcodeproj/project.pbxproj
+          grep -m1 'objectVersion' Midstream.xcodeproj/project.pbxproj
 
       - name: Build
         # Unsigned: no team, no provisioning profile, no certificate on the
