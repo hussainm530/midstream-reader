@@ -39,7 +39,12 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate project
-        run: xcodegen generate
+        # The compatibility line is printed because a mismatch between it and
+        # the pinned Xcode surfaces only as "Unable to read project", with no
+        # hint that the format is the problem.
+        run: |
+          xcodegen generate
+          grep -m1 'objectVersion\|compatibilityVersion' Midstream.xcodeproj/project.pbxproj
 
       - name: Build
         # Unsigned: no team, no provisioning profile, no certificate on the

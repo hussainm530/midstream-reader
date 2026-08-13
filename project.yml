@@ -7,6 +7,15 @@ options:
   deploymentTarget:
     iOS: "12.0"
   createIntermediateGroups: true
+  # Current XcodeGen writes a pbxproj that Xcode 15.4 cannot parse -- it fails
+  # with a bare "Unable to read project", which looks like a corrupt file
+  # rather than a version mismatch. Pinning the object version keeps the
+  # generated project readable by the pinned toolchain.
+  #
+  # These two pins move together: the Xcode version in CI is fixed because the
+  # app targets iOS 12, so the project format has to be fixed to match.
+  objectVersion: 54
+  xcodeVersion: "15.4"
 
 settings:
   base:
