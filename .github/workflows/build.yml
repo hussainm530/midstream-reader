@@ -106,3 +106,64 @@ jobs:
           name: Midstream-ipa
           path: Midstream.ipa
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # The succession plan, run on every build rather than discovered in a panic.
+  #
+  # macos-14 (Xcode 15.4) is scheduled to be fully unsupported by November 2026,
+  # and macos-15 carries NO Xcode 15.x at all -- its oldest is 16.0. So the
+  # question "can Xcode 16 build a working iOS 12 binary?" has a deadline, and
+  # the only time it can be answered cheaply is now, while the known-good
+  # toolchain still exists to compare against.
+  #
+  # This job builds the identical source with Xcode 16 and compares the two
+  # binaries. It is allowed to fail: a red canary is information, not a broken
+  # build. What it must never do is fail silently in November.
+  canary-xcode16:
+    runs-on: macos-15
+    continue-on-error: true
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          ls /Applications | grep -i '^Xcode' || true
+
+      - name: Install XcodeGen 2.40.1
+        run: |
+          curl -fsSL -o xcodegen.zip \
+            https://github.com/yonaskolb/XcodeGen/releases/download/2.40.1/xcodegen.zip
+          unzip -q xcodegen.zip
+          echo "$PWD/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate and build
+        run: |
+          xcodegen generate
+          xcodebuild \
+            -project Midstream.xcodeproj \
+            -scheme Midstream \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Report what Xcode 16 actually produced
+        # The reported Xcode 16 failure mode is a build that succeeds and then
+        # crashes on launch under iOS 12, so "it compiled" proves nothing. These
+        # three facts are what would differ: the declared floor, the platform
+        # version recorded in the load commands, and whether the Swift runtime
+        # is still bundled (below iOS 12.2 it must be).
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          echo "MinimumOSVersion: $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")"
+          echo "--- LC_BUILD_VERSION / minos ---"
+          otool -l "$APP/Midstream" | grep -A4 'LC_BUILD_VERSION\|LC_VERSION_MIN_IPHONEOS' | head -20
+          echo "--- bundled Swift runtime ---"
+          ls "$APP/Frameworks" 2>/dev/null | head -20 || echo "NO Frameworks dir -- Swift runtime not bundled, WILL NOT LAUNCH below iOS 12.2"
