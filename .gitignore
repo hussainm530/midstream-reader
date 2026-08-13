@@ -5,3 +5,9 @@ DerivedData/
 Payload/
 *.ipa
 .DS_Store
+
+# Machine-local Claude permissions. NEVER track this -- a tracked
+# settings.local.json is the trap documented in Node-Map: main's copy silently
+# overwrote the sub's on merge, stripping the deny rules that enforce the
+# one-writer discipline. Permissions are per-machine, full stop.
+.claude/
