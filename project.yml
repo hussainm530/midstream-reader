@@ -42,12 +42,14 @@ targets:
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         UILaunchStoryboardName: ""
+        # All four, because iPad multitasking requires either the full set or
+        # UIRequiresFullScreen -- and a reader that refuses an orientation
+        # because the iPad was picked up the other way round is its own bug.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        UIRequiredDeviceCapabilities:
-          - armv7
         # Voice notes are recorded on device and transcribed later on the
         # ThinkPad -- Moonshine cannot run on an A7 with 1 GB of RAM.
         NSMicrophoneUsageDescription: >-
