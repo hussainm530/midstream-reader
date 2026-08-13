@@ -1,0 +1,88 @@
+name: Build unsigned IPA
+
+# Builds on a GitHub-hosted macOS runner so no Mac is needed. The artifact is
+# an *unsigned* .ipa; AltStore on the Windows side signs it with the free Apple
+# ID at install time. That is also why there are no secrets here -- nothing in
+# this workflow touches a certificate.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    # PINNED DELIBERATELY -- do not move to macos-latest.
+    #
+    # The app targets iOS 12.0, which the current toolchain no longer officially
+    # supports: Xcode 16 states iOS 15 as its minimum deployment target, and
+    # there are reports of Xcode 16 builds crashing on iOS 12 even when the
+    # build succeeds. Xcode 15 still officially supports an iOS 12 deployment
+    # target, so the build is pinned to a runner image that carries it.
+    #
+    # This window is closing. macOS 13 was retired in December 2025 and macOS 14
+    # is scheduled to be fully unsupported by November 2026. When macos-14 goes,
+    # this pin must move to a self-hosted runner, a container, or the project
+    # accepts an Xcode 16 build and tests hard on the device.
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 15
+        run: |
+          ls /Applications | grep Xcode
+          sudo xcode-select -s /Applications/Xcode_15.4.app
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build
+        # Unsigned: no team, no provisioning profile, no certificate on the
+        # runner. Signing happens on the Windows side.
+        run: |
+          xcodebuild \
+            -project Midstream.xcodeproj \
+            -scheme Midstream \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Package .ipa
+        # An .ipa is a zip with the .app inside a Payload/ directory. Doing it
+        # by hand avoids xcodebuild's export step, which insists on a signing
+        # team we do not have.
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          test -n "$APP" || { echo "no .app produced"; exit 1; }
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry Midstream.ipa Payload
+          ls -lh Midstream.ipa
+
+      - name: Verify deployment target
+        # Cheap guard against a toolchain bump silently raising the floor above
+        # the iPad's 12.5.8 -- which would install fine and then refuse to launch.
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          MIN=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP/Info.plist")
+          echo "MinimumOSVersion = $MIN"
+          case "$MIN" in
+            12.*) echo "ok" ;;
+            *) echo "REFUSING: built for iOS $MIN, the iPad runs 12.5.8"; exit 1 ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Midstream-ipa
+          path: Midstream.ipa
+          retention-days: 30

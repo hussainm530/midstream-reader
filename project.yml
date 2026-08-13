@@ -1,0 +1,55 @@
+name: Midstream
+options:
+  bundleIdPrefix: com.mak.midstream
+  # iOS 12.0 is the floor the hardware forces (iPad mini 2, A7, iOS 12.5.8).
+  # This rules out SwiftUI (13.0), scene lifecycle (13.0), and the whole
+  # semantic-colour API. Everything here is UIKit + PDFKit, deliberately.
+  deploymentTarget:
+    iOS: "12.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "12.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_BITCODE: NO
+    # CI builds unsigned and packages the .ipa by hand; AltStore re-signs
+    # on the Windows side with the free Apple ID.
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+
+targets:
+  Midstream:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Midstream
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        UILaunchStoryboardName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiredDeviceCapabilities:
+          - armv7
+        # Voice notes are recorded on device and transcribed later on the
+        # ThinkPad -- Moonshine cannot run on an A7 with 1 GB of RAM.
+        NSMicrophoneUsageDescription: >-
+          Record spoken annotations while reading. Audio stays on the device
+          until it syncs to your own laptop.
+        # The reader talks to the ThinkPad over Tailscale, which is plain
+        # HTTP on a private tailnet -- no public traffic, so ATS is relaxed
+        # for that host only rather than globally.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+          NSExceptionDomains:
+            100.117.163.83:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: false
