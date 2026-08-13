@@ -167,3 +167,19 @@ jobs:
           otool -l "$APP/Midstream" | grep -A4 'LC_BUILD_VERSION\|LC_VERSION_MIN_IPHONEOS' | head -20
           echo "--- bundled Swift runtime ---"
           ls "$APP/Frameworks" 2>/dev/null | head -20 || echo "NO Frameworks dir -- Swift runtime not bundled, WILL NOT LAUNCH below iOS 12.2"
+
+      - name: Package canary .ipa
+        # Shipped as an artifact so the one remaining unknown -- whether an
+        # Xcode 16 build actually *launches* on 12.5.8 -- can be settled on the
+        # device today, sideloaded next to the known-good build, rather than
+        # discovered after the Xcode 15 runners are gone.
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry Midstream-xcode16.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Midstream-ipa-xcode16-canary
+          path: Midstream-xcode16.ipa
+          retention-days: 30
