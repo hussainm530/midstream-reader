@@ -67,21 +67,51 @@ final class SyncClient {
     /// downloading everything would also be defensible, but making it a
     /// deliberate act means you always know what you have with you before you
     /// lose signal.
-    func download(_ paper: Paper, progress: ((Double) -> Void)? = nil,
-                  completion: @escaping (Bool) -> Void) {
-        let encoded = paper.filename.addingPercentEncoding(
-            withAllowedCharacters: .urlPathAllowed) ?? paper.filename
-        let url = baseURL.appendingPathComponent("pdf").appendingPathComponent(encoded)
-        let task = session.downloadTask(with: url) { temp, response, _ in
-            guard let temp = temp,
-                  let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                DispatchQueue.main.async { completion(false) }
+    func download(_ paper: Paper, completion: @escaping (Bool, String?) -> Void) {
+        // Encode exactly once.
+        //
+        // The first version pre-encoded the filename with
+        // addingPercentEncoding and then passed it to appendingPathComponent,
+        // which encodes again -- so "%20" became "%2520" and every request
+        // 404'd. Setting URLComponents.path takes the *raw* string and encodes
+        // it on the way out, which is the one place the encoding happens.
+        // These filenames all carry spaces and a bracketed Zotero key, so
+        // there is no forgiving case to hide the bug.
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            completion(false, "Bad server URL")
+            return
+        }
+        components.path = "/pdf/" + paper.filename
+        guard let url = components.url else {
+            completion(false, "Could not build URL for \(paper.filename)")
+            return
+        }
+
+        let task = session.downloadTask(with: url) { temp, response, error in
+            // Report *why* it failed. The silent-false version showed
+            // "downloading..." and then simply stopped, which is
+            // indistinguishable from a hang and says nothing useful.
+            if let error = error {
+                DispatchQueue.main.async { completion(false, error.localizedDescription) }
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let temp = temp, status == 200 else {
+                DispatchQueue.main.async {
+                    completion(false, "Server returned \(status)")
+                }
                 return
             }
             let dest = Store.shared.localURL(for: paper)
             try? FileManager.default.removeItem(at: dest)
-            let ok = (try? FileManager.default.moveItem(at: temp, to: dest)) != nil
-            DispatchQueue.main.async { completion(ok) }
+            do {
+                try FileManager.default.moveItem(at: temp, to: dest)
+                DispatchQueue.main.async { completion(true, nil) }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(false, "Could not save: \(error.localizedDescription)")
+                }
+            }
         }
         task.resume()
     }

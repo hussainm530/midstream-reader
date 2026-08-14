@@ -97,12 +97,28 @@ final class LibraryViewController: UITableViewController {
         // before you lose signal.
         downloading.insert(paper.key)
         tableView.reloadRows(at: [indexPath], with: .none)
-        SyncClient.shared.download(paper) { [weak self] ok in
+        SyncClient.shared.download(paper) { [weak self] ok, reason in
             guard let self = self else { return }
             self.downloading.remove(paper.key)
             self.tableView.reloadRows(at: [indexPath], with: .none)
-            if ok { self.open(paper) }
+            if ok {
+                self.open(paper)
+            } else {
+                self.reportFailure(paper: paper, reason: reason)
+            }
         }
+    }
+
+    /// Say why. A download that fails silently looks identical to one that
+    /// hung, and leaves nothing to debug from -- which is exactly what the
+    /// double-encoded URL bug looked like on the device.
+    private func reportFailure(paper: Paper, reason: String?) {
+        let alert = UIAlertController(
+            title: "Couldn't download",
+            message: (reason ?? "Unknown error") + "\n\n" + paper.filename,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     private func open(_ paper: Paper) {
