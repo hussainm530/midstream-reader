@@ -17,10 +17,15 @@ final class Store {
     private let annotationsFile: URL
     private let papersFile: URL
     private let repsFile: URL
+    private let deepReadsFile: URL
 
     private(set) var papers: [Paper] = []
     private(set) var annotations: [Annotation] = []
     private(set) var reps: [Rep] = []
+    /// Paper key -> deep-read flag. Kept in its own file rather than only on
+    /// the Paper records, because papers.json is replaced wholesale on every
+    /// library refresh and this must survive that.
+    private var deepReads: [String: Bool] = [:]
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -42,6 +47,7 @@ final class Store {
         annotationsFile = root.appendingPathComponent("annotations.json")
         papersFile = root.appendingPathComponent("papers.json")
         repsFile = root.appendingPathComponent("reps.json")
+        deepReadsFile = root.appendingPathComponent("deep_reads.json")
 
         for dir in [pdfDir, voiceDir] {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -55,6 +61,7 @@ final class Store {
         papers = decodeFile(papersFile) ?? []
         annotations = decodeFile(annotationsFile) ?? []
         reps = decodeFile(repsFile) ?? []
+        deepReads = decodeFile(deepReadsFile) ?? [:]
     }
 
     private func decodeFile<T: Decodable>(_ url: URL) -> T? {
@@ -73,8 +80,36 @@ final class Store {
     // MARK: - Papers
 
     func setPapers(_ new: [Paper]) {
-        papers = new
+        // Locally-set deep-read flags win over whatever the fetch carried:
+        // the toggle lives in the reader, and a refresh landing while the
+        // laptop hasn't caught up would otherwise silently undo it.
+        papers = applyLocalDeepReads(new)
         write(papers, to: papersFile)
+    }
+
+    /// Persist a deep-read choice locally.
+    ///
+    /// The device is the authority here, not the laptop. A `setPapers` from a
+    /// sync would otherwise overwrite a flag the reader had just set from the
+    /// drawer -- so the local value is re-applied after every refresh, and the
+    /// laptop's copy is a mirror rather than the source.
+    func setDeepRead(paperKey: String, deep: Bool) {
+        deepReads[paperKey] = deep
+        write(deepReads, to: deepReadsFile)
+        if let i = papers.firstIndex(where: { $0.key == paperKey }) {
+            papers[i].deepRead = deep
+            write(papers, to: papersFile)
+        }
+    }
+
+    /// Re-apply locally-set deep-read flags over a freshly fetched library.
+    func applyLocalDeepReads(_ fetched: [Paper]) -> [Paper] {
+        return fetched.map { paper in
+            guard let local = deepReads[paper.key] else { return paper }
+            var copy = paper
+            copy.deepRead = local
+            return copy
+        }
     }
 
     func localURL(for paper: Paper) -> URL {

@@ -17,12 +17,26 @@ struct Paper: Codable {
     let guideMarkdown: String
     /// Minutes the rep is meant to last, if this paper is queued as one.
     let repMinutes: Int?
+    /// Pass 3's chunks, shipped alongside the guide rather than baked into it.
+    /// Held so the drawer's deep-read checkbox can add and remove them with no
+    /// round trip -- the decision is made mid-paper, which is exactly when the
+    /// network is least likely to be there.
+    let guideDeep: String?
+    /// Whether this paper is currently marked for a deep read. Persisted on
+    /// the laptop; the local value wins until a sync says otherwise.
+    var deepRead: Bool?
+    /// The reading plan's own name for this paper, so the toggle can be sent
+    /// without the app knowing how the plan spells its filenames.
+    let planPaper: String?
 
     enum CodingKeys: String, CodingKey {
         case key, title, filename
         case pageOffset = "page_offset"
         case guideMarkdown = "guide"
         case repMinutes = "rep_minutes"
+        case guideDeep = "guide_deep"
+        case deepRead = "deep_read"
+        case planPaper = "plan_paper"
     }
 }
 

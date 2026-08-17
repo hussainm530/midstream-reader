@@ -9,7 +9,7 @@ import UIKit
 /// drawer, and a composer that captures the real selection.
 final class ReaderViewController: UIViewController, PDFViewDelegate {
 
-    private let paper: Paper
+    private var paper: Paper
     private let pdfView = PDFView()
     private let timerView = RepTimerView()
     private let guideDrawer = GuideDrawer()
@@ -76,6 +76,16 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
     private func setUpChrome() {
         guideDrawer.install(in: view)
         guideDrawer.setGuide(paper.guideMarkdown, paperTitle: paper.title)
+        guideDrawer.setDeepGuide(paper.guideDeep)
+        // Only offered where there is an arc to extend -- a paper with no
+        // session has no pass 3 to add.
+        guideDrawer.setDeepRead(available: !(paper.guideDeep ?? "").isEmpty,
+                                isOn: paper.deepRead ?? false) { [weak self] on in
+            guard let self = self else { return }
+            self.paper.deepRead = on
+            Store.shared.setDeepRead(paperKey: self.paper.key, deep: on)
+            SyncClient.shared.setDeepRead(self.paper, on)
+        }
 
         composer.install(in: view)
         composer.currentPaperKey = paper.key

@@ -166,6 +166,21 @@ final class SyncClient {
         }
     }
 
+    /// Tell the laptop this paper is (or is no longer) marked for a deep read.
+    ///
+    /// Fire and forget, like every other write here. The checkbox has already
+    /// changed the guide on screen by the time this is called, and it must
+    /// keep working with the laptop asleep -- so a failure here is a stale
+    /// flag on the other machine, not a broken drawer. The next `/ipad-sync`
+    /// is where the two get reconciled.
+    func setDeepRead(_ paper: Paper, _ deep: Bool) {
+        guard let planPaper = paper.planPaper, !planPaper.isEmpty,
+              var request = jsonRequest(path: "api/deep") else { return }
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["paper": planPaper, "deep": deep])
+        session.dataTask(with: request).resume()
+    }
+
     private func jsonRequest(path: String) -> URLRequest? {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
