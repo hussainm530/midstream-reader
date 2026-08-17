@@ -28,6 +28,12 @@ final class ChunkTimerBar: UIView {
 
     private let chunkTrack = UIStackView()
     private let caption = UILabel()
+    private let restartButton = UIButton(type: .system)
+
+    /// Restart the current chunk's clock. Reported with the index so the
+    /// caller can work out where in the arc to rewind to.
+    var onRestartChunk: ((Int) -> Void)?
+    private var currentChunk = 0
 
     private var segments: [UIView] = []
     private var fills: [UIView] = []
@@ -72,6 +78,20 @@ final class ChunkTimerBar: UIView {
         caption.translatesAutoresizingMaskIntoConstraints = false
         addSubview(caption)
 
+        // A chunk you got pulled out of should be restartable without
+        // restarting the whole rep -- that is the granularity interruptions
+        // actually happen at.
+        restartButton.setTitle("↺ Restart chunk", for: .normal)
+        restartButton.titleLabel?.font = UIFont.systemFont(ofSize: 12)
+        restartButton.setTitleColor(UIColor(white: 0.42, alpha: 1), for: .normal)
+        restartButton.contentEdgeInsets = UIEdgeInsets(top: 6, left: 0,
+                                                       bottom: 6, right: 0)
+        restartButton.contentHorizontalAlignment = .leading
+        restartButton.translatesAutoresizingMaskIntoConstraints = false
+        restartButton.addTarget(self, action: #selector(restartTapped),
+                                for: .touchUpInside)
+        addSubview(restartButton)
+
         overallFillWidth = overallFill.widthAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             overallTrack.topAnchor.constraint(equalTo: topAnchor),
@@ -93,8 +113,16 @@ final class ChunkTimerBar: UIView {
             caption.topAnchor.constraint(equalTo: chunkTrack.bottomAnchor, constant: 6),
             caption.leadingAnchor.constraint(equalTo: leadingAnchor),
             caption.trailingAnchor.constraint(equalTo: trailingAnchor),
-            caption.bottomAnchor.constraint(equalTo: bottomAnchor)
+
+            restartButton.topAnchor.constraint(equalTo: caption.bottomAnchor),
+            restartButton.leadingAnchor.constraint(equalTo: leadingAnchor),
+            restartButton.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            restartButton.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+    }
+
+    @objc private func restartTapped() {
+        onRestartChunk?(currentChunk)
     }
 
     /// Rebuild both tracks for a given arc.
@@ -173,11 +201,13 @@ final class ChunkTimerBar: UIView {
         layoutIfNeeded()
 
         if current < 0 {
+            currentChunk = minutes.count - 1
             caption.textColor = over
             caption.text = String(format: "Arc complete · %d min over",
                                   Int(intoArc - totalMin))
             return
         }
+        currentChunk = current
 
         // Rounded up: "0 min left" while a chunk is still running would be a
         // lie, and this number exists to be glanced at, not trusted to the
@@ -189,6 +219,13 @@ final class ChunkTimerBar: UIView {
                               current + 1, minutes.count,
                               max(0, Int(leftInChunk.rounded(.up))),
                               Int(intoArc), Int(totalMin))
+    }
+
+    /// Minutes from the start of the arc to the start of chunk `index` — where
+    /// the arc clock rewinds to when that chunk is restarted.
+    func startOfChunk(_ index: Int) -> TimeInterval {
+        guard index > 0 && index <= minutes.count else { return 0 }
+        return TimeInterval(minutes[0..<index].reduce(0, +) * 60)
     }
 
     /// Index of the chunk the clock is currently in, or nil once past the end.

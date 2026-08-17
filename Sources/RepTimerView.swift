@@ -19,6 +19,19 @@ final class RepTimerView: UIView {
     private var accumulated: TimeInterval = 0
     private var timer: Timer?
 
+    /// Seconds subtracted from the *arc* clock by chunk restarts.
+    ///
+    /// Restarting a chunk rewinds the pacing bar, but must not rewind the rep
+    /// log: the log answers "how long did you actually read", and letting a
+    /// restart shorten it would quietly falsify the training record. So there
+    /// are two clocks -- `elapsed` is the truth and never goes backwards,
+    /// `arcElapsed` is the pacing device and does.
+    private var rewound: TimeInterval = 0
+
+    /// Whether the timer was running when the app went to the background, so
+    /// a deliberate pause survives the screen locking.
+    private var resumeOnForeground = false
+
     /// Target duration in seconds; nil for an untimed read (still counts up).
     var target: TimeInterval?
 
@@ -78,6 +91,45 @@ final class RepTimerView: UIView {
         let tap = UITapGestureRecognizer(target: self, action: #selector(toggle))
         addGestureRecognizer(tap)
         isUserInteractionEnabled = true
+
+        observeLifecycle()
+    }
+
+    // MARK: - Locking
+
+    /// Stop the clock when the screen locks or the cover closes, and start it
+    /// again on the way back.
+    ///
+    /// This is not cosmetic. `elapsed` is derived from a wall-clock `Date`, so
+    /// without this a rep interrupted by closing the cover kept counting the
+    /// whole time the iPad sat shut -- and a 20-minute rep that took an
+    /// afternoon read as a 4-hour one in the training log. The timer stops
+    /// firing while suspended either way; what changes here is that the time
+    /// spent suspended is not counted.
+    private func observeLifecycle() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(willResign),
+            name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(didBecomeActive),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    /// `willResignActive` rather than `didEnterBackground`: locking the screen
+    /// resigns active but does not always background the app promptly, and the
+    /// gap is counted time.
+    @objc private func willResign() {
+        resumeOnForeground = isRunning
+        if isRunning { pause() }
+    }
+
+    @objc private func didBecomeActive() {
+        // Only auto-resume if the lock interrupted a running timer. A timer
+        // paused on purpose before putting the iPad down stays paused.
+        if resumeOnForeground {
+            resumeOnForeground = false
+            start()
+        }
     }
 
     // MARK: - Control
@@ -116,13 +168,25 @@ final class RepTimerView: UIView {
 
     var elapsedMinutes: Int { return Int((elapsed / 60).rounded()) }
 
+    /// The pacing clock the guide's bars run on. Rewound by a chunk restart;
+    /// `elapsed` -- what the rep log records -- is not.
+    var arcElapsed: TimeInterval { return max(0, elapsed - rewound) }
+
+    /// Restart the arc clock at `seconds` into the arc, leaving the rep's real
+    /// elapsed time untouched.
+    func rewindArc(to seconds: TimeInterval) {
+        rewound = elapsed - seconds
+        announced = false   // the target can be reached again after a restart
+        onTick?(arcElapsed)
+    }
+
     // MARK: - Display
 
     private var announced = false
 
     @objc private func tick() {
         updateLabel()
-        onTick?(elapsed)
+        onTick?(arcElapsed)
         guard let target = target, target > 0 else { return }
         let fraction = min(1, elapsed / target)
         progressWidth.constant = bounds.width * CGFloat(fraction)

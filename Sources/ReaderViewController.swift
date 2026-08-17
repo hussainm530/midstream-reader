@@ -106,6 +106,14 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
             self?.composeNote(for: chunk)
         }
         guideDrawer.timerBar.setChunks(guideDrawer.activeChunks)
+        guideDrawer.timerBar.onRestartChunk = { [weak self] index in
+            guard let self = self else { return }
+            // Rewinds the pacing bar only. The rep log keeps the real elapsed
+            // time, so restarting a chunk after an interruption cannot quietly
+            // shorten what the training record says you read.
+            let start = self.guideDrawer.timerBar.startOfChunk(index)
+            self.timerView.rewindArc(to: start)
+        }
 
         composer.install(in: view)
         composer.currentPaperKey = paper.key
