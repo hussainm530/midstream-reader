@@ -137,7 +137,13 @@ final class SyncClient {
             completion?(false)
             return
         }
-        let payload = SyncPayload(annotations: pending.annotations, reps: pending.reps)
+        // Guide notes go every time rather than being diffed. There is at most
+        // one per chunk and a handful per paper, so the bandwidth is nothing,
+        // and the server upsert is keyed on id -- whereas a missed note is a
+        // response to the method that exists nowhere else.
+        let payload = SyncPayload(annotations: pending.annotations,
+                                  reps: pending.reps,
+                                  guideNotes: Store.shared.guideNotes)
         request.httpBody = try? encoder.encode(payload)
 
         session.dataTask(with: request) { _, response, _ in
@@ -192,4 +198,10 @@ final class SyncClient {
 private struct SyncPayload: Encodable {
     let annotations: [Annotation]
     let reps: [Rep]
+    let guideNotes: [GuideNote]
+
+    enum CodingKeys: String, CodingKey {
+        case annotations, reps
+        case guideNotes = "guide_notes"
+    }
 }

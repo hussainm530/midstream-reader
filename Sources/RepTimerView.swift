@@ -27,6 +27,12 @@ final class RepTimerView: UIView {
     /// would be worse than the overrun.
     var onTargetReached: (() -> Void)?
 
+    /// Fired every second with the elapsed time, so other views (the guide's
+    /// chunk bar) can render against this clock instead of running their own.
+    /// Two timers would drift, and the one thing worse than an invisible timer
+    /// is two visible ones disagreeing.
+    var onTick: ((TimeInterval) -> Void)?
+
     private var isRunning: Bool { return startedAt != nil }
 
     override init(frame: CGRect) {
@@ -116,6 +122,7 @@ final class RepTimerView: UIView {
 
     @objc private func tick() {
         updateLabel()
+        onTick?(elapsed)
         guard let target = target, target > 0 else { return }
         let fraction = min(1, elapsed / target)
         progressWidth.constant = bounds.width * CGFloat(fraction)

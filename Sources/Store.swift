@@ -18,6 +18,7 @@ final class Store {
     private let papersFile: URL
     private let repsFile: URL
     private let deepReadsFile: URL
+    private let guideNotesFile: URL
 
     private(set) var papers: [Paper] = []
     private(set) var annotations: [Annotation] = []
@@ -26,6 +27,7 @@ final class Store {
     /// the Paper records, because papers.json is replaced wholesale on every
     /// library refresh and this must survive that.
     private var deepReads: [String: Bool] = [:]
+    private(set) var guideNotes: [GuideNote] = []
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -48,6 +50,7 @@ final class Store {
         papersFile = root.appendingPathComponent("papers.json")
         repsFile = root.appendingPathComponent("reps.json")
         deepReadsFile = root.appendingPathComponent("deep_reads.json")
+        guideNotesFile = root.appendingPathComponent("guide_notes.json")
 
         for dir in [pdfDir, voiceDir] {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -62,6 +65,7 @@ final class Store {
         annotations = decodeFile(annotationsFile) ?? []
         reps = decodeFile(repsFile) ?? []
         deepReads = decodeFile(deepReadsFile) ?? [:]
+        guideNotes = decodeFile(guideNotesFile) ?? []
     }
 
     private func decodeFile<T: Decodable>(_ url: URL) -> T? {
@@ -118,6 +122,35 @@ final class Store {
 
     func isDownloaded(_ paper: Paper) -> Bool {
         return fm.fileExists(atPath: localURL(for: paper).path)
+    }
+
+    // MARK: - Guide notes
+
+    func guideNote(paperKey: String, step: Int) -> GuideNote? {
+        return guideNotes.first { $0.paperKey == paperKey && $0.step == step }
+    }
+
+    /// One note per chunk, edited in place. A chunk has a single response, so
+    /// writing again is a correction rather than a second note -- which is also
+    /// why `updatedAt` moves and `createdAt` does not.
+    func saveGuideNote(paperKey: String, step: Int, chunkTitle: String,
+                       text: String, voiceNote: String?) {
+        if let i = guideNotes.firstIndex(where: {
+            $0.paperKey == paperKey && $0.step == step }) {
+            if text.isEmpty && voiceNote == nil {
+                guideNotes.remove(at: i)
+            } else {
+                guideNotes[i].text = text
+                if voiceNote != nil { guideNotes[i].voiceNote = voiceNote }
+                guideNotes[i].updatedAt = Date()
+            }
+        } else if !text.isEmpty || voiceNote != nil {
+            guideNotes.append(GuideNote(
+                id: UUID().uuidString, paperKey: paperKey, step: step,
+                chunkTitle: chunkTitle, text: text, voiceNote: voiceNote,
+                createdAt: Date(), updatedAt: Date()))
+        }
+        write(guideNotes, to: guideNotesFile)
     }
 
     // MARK: - Annotations

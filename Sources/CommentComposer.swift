@@ -37,6 +37,13 @@ final class CommentComposer: UIView, UITextViewDelegate {
     var onSave: ((String, AnnotationCategory?, String?) -> Void)?
     var onCancel: (() -> Void)?
 
+    /// Called instead of `onSave` when the composer was opened for a guide
+    /// note. Same window, same keyboard pinning -- a response to the method
+    /// deserves the one input surface that was actually designed for typing
+    /// on this device.
+    var onSaveNote: ((String, String?) -> Void)?
+    private var isNoteMode = false
+
     // MARK: - Setup
 
     override init(frame: CGRect) {
@@ -215,7 +222,24 @@ final class CommentComposer: UIView, UITextViewDelegate {
         isHidden = true
     }
 
+    /// Open for a guide-chunk response. Category chips are hidden: a note
+    /// about a step of the method has no category to pick, and leaving a
+    /// meaningless row of chips on screen invites a meaningless tap.
+    func presentNote(chunkTitle: String, existing: String) {
+        isNoteMode = true
+        quoteLabel.text = chunkTitle
+        textView.text = existing
+        selectedCategory = nil
+        chipRow.isHidden = true
+        isHidden = false
+        // Unlike an annotation, a note has nothing to save without typing --
+        // so here the keyboard *is* raised.
+        textView.becomeFirstResponder()
+    }
+
     func present(quote: String) {
+        isNoteMode = false
+        chipRow.isHidden = false
         quoteLabel.text = "“" + quote.trimmingCharacters(in: .whitespacesAndNewlines) + "”"
         textView.text = ""
         selectedCategory = nil
@@ -277,7 +301,11 @@ final class CommentComposer: UIView, UITextViewDelegate {
 
     @objc private func save() {
         let comment = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        onSave?(comment, selectedCategory, pendingVoiceNote)
+        if isNoteMode {
+            onSaveNote?(comment, pendingVoiceNote)
+        } else {
+            onSave?(comment, selectedCategory, pendingVoiceNote)
+        }
         pendingVoiceNote = nil
         recordingLabel.isHidden = true
         dismiss()

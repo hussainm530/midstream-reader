@@ -15,6 +15,8 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
     private let guideDrawer = GuideDrawer()
     private let composer = CommentComposer()
     private var rep: Rep
+    /// The chunk whose response is being written, if any.
+    private var noteChunk: GuideChunk?
 
     init(paper: Paper) {
         self.paper = paper
@@ -40,6 +42,16 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
         // have to remember to start is a rep that goes untimed.
         timerView.target = paper.repMinutes.map { TimeInterval($0 * 60) }
         timerView.onTargetReached = { [weak self] in self?.announceTarget() }
+        // The bar is driven off the same clock as the digits rather than its
+        // own timer, so the two can never disagree about how long you've read.
+        timerView.onTick = { [weak self] elapsed in
+            guard let self = self else { return }
+            self.guideDrawer.timerBar.update(elapsed: elapsed)
+            let i = self.guideDrawer.timerBar.currentIndex(elapsed: elapsed)
+            let all = self.guideDrawer.activeChunks
+            self.guideDrawer.setCurrentStep(
+                i.flatMap { $0 < all.count ? all[$0].step : nil })
+        }
         timerView.start()
     }
 
@@ -75,22 +87,38 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
 
     private func setUpChrome() {
         guideDrawer.install(in: view)
-        guideDrawer.setGuide(paper.guideMarkdown, paperTitle: paper.title)
-        guideDrawer.setDeepGuide(paper.guideDeep)
-        // Only offered where there is an arc to extend -- a paper with no
-        // session has no pass 3 to add.
-        guideDrawer.setDeepRead(available: !(paper.guideDeep ?? "").isEmpty,
-                                isOn: paper.deepRead ?? false) { [weak self] on in
+        guideDrawer.configure(paperTitle: paper.title,
+                              chunks: paper.chunks ?? [],
+                              deepChunks: paper.chunksDeep ?? [],
+                              deepIsOn: paper.deepRead ?? false)
+        guideDrawer.noteProvider = { [weak self] chunk in
+            guard let self = self else { return nil }
+            return Store.shared.guideNote(paperKey: self.paper.key,
+                                          step: chunk.step)?.text
+        }
+        guideDrawer.onDeepChange = { [weak self] on in
             guard let self = self else { return }
             self.paper.deepRead = on
             Store.shared.setDeepRead(paperKey: self.paper.key, deep: on)
             SyncClient.shared.setDeepRead(self.paper, on)
         }
+        guideDrawer.onNoteTap = { [weak self] chunk in
+            self?.composeNote(for: chunk)
+        }
+        guideDrawer.timerBar.setChunks(guideDrawer.activeChunks)
 
         composer.install(in: view)
         composer.currentPaperKey = paper.key
         composer.onSave = { [weak self] comment, category, voice in
             self?.saveAnnotation(comment: comment, category: category, voice: voice)
+        }
+        composer.onSaveNote = { [weak self] text, voice in
+            guard let self = self, let chunk = self.noteChunk else { return }
+            Store.shared.saveGuideNote(paperKey: self.paper.key, step: chunk.step,
+                                       chunkTitle: chunk.title, text: text,
+                                       voiceNote: voice)
+            self.noteChunk = nil
+            self.guideDrawer.refreshNotes()
         }
 
         timerView.translatesAutoresizingMaskIntoConstraints = false
@@ -110,6 +138,19 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(selectionChanged),
             name: .PDFViewSelectionChanged, object: pdfView)
+    }
+
+    /// Open the composer against a guide chunk rather than a passage.
+    ///
+    /// Same window as an annotation deliberately: it is the one input surface
+    /// on this device built to survive the keyboard, and a second, lesser text
+    /// box for responses would be the thing that stops them being written.
+    private func composeNote(for chunk: GuideChunk) {
+        noteChunk = chunk
+        let existing = Store.shared.guideNote(paperKey: paper.key,
+                                              step: chunk.step)?.text ?? ""
+        composer.presentNote(chunkTitle: "\(chunk.step). \(chunk.title)",
+                             existing: existing)
     }
 
     @objc private func toggleGuide() {

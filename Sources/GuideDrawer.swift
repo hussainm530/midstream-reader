@@ -2,32 +2,43 @@ import UIKit
 
 /// The reading guide, as a collapsible drawer over the page.
 ///
-/// The guide (why this paper, what to look for, the rep's target) has always
-/// lived in the vault on the other device, which is the entire reason it gets
+/// The guide (the arc, the target, what to do in each chunk) has always lived
+/// in the vault on the other device, which is the entire reason it gets
 /// skipped. Splitting attention across two machines is not a workflow.
 ///
 /// It slides in from the trailing edge and overlays rather than reflowing the
 /// PDF, because reflowing would change the page layout mid-read -- and page
 /// layout is the thing the readability test said to protect.
+///
+/// It renders the arc from structured chunks rather than parsing markdown, so
+/// the timer can segment on the same data the text is drawn from, and each
+/// chunk can carry its own response.
 final class GuideDrawer: UIView {
     private let scroll = UIScrollView()
     private let stack = UIStackView()
-    private let handle = UIButton(type: .system)
+
+    let timerBar = ChunkTimerBar()
 
     private var widthConstraint: NSLayoutConstraint!
     private(set) var isOpen = false
 
-    private var guideMarkdown = ""
-    private var deepMarkdown: String?
     private var paperTitle = ""
+    private var chunks: [GuideChunk] = []
+    private var deepChunks: [GuideChunk] = []
     private var deepAvailable = false
     private var deepIsOn = false
-    private var onDeepChange: ((Bool) -> Void)?
-    private let deepButton = UIButton(type: .system)
+    private var currentStep: Int?
+
+    var onDeepChange: ((Bool) -> Void)?
+    /// Tapped "add / edit response" on a chunk.
+    var onNoteTap: ((GuideChunk) -> Void)?
+    /// Looks up the saved response for a chunk, so the drawer can show it
+    /// without owning the store.
+    var noteProvider: ((GuideChunk) -> String?)?
 
     /// Drawer width: wide enough for prose, narrow enough to leave a usable
     /// column of the paper visible on a 7.9" screen in portrait.
-    private let openWidth: CGFloat = 260
+    private let openWidth: CGFloat = 300
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -59,11 +70,11 @@ final class GuideDrawer: UIView {
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            stack.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 16),
-            stack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
-            stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -24),
-            stack.widthAnchor.constraint(equalToConstant: openWidth - 32)
+            stack.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 14),
+            stack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -14),
+            stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -28),
+            stack.widthAnchor.constraint(equalToConstant: openWidth - 28)
         ])
     }
 
@@ -80,9 +91,7 @@ final class GuideDrawer: UIView {
         ])
     }
 
-    func toggle() {
-        isOpen ? close() : open()
-    }
+    func toggle() { isOpen ? close() : open() }
 
     func open() {
         isOpen = true
@@ -105,37 +114,42 @@ final class GuideDrawer: UIView {
 
     // MARK: - Content
 
-    /// Renders the guide. Deliberately handles only headings, bullets and
-    /// paragraphs -- the guide is a short prose brief, not a document, and a
-    /// Markdown dependency for three block types would not earn itself.
-    func setGuide(_ markdown: String, paperTitle: String) {
-        guideMarkdown = markdown
+    func configure(paperTitle: String, chunks: [GuideChunk],
+                   deepChunks: [GuideChunk], deepIsOn: Bool) {
         self.paperTitle = paperTitle
+        self.chunks = chunks
+        self.deepChunks = deepChunks
+        self.deepAvailable = !deepChunks.isEmpty
+        self.deepIsOn = deepIsOn
         rebuild()
     }
 
-    /// Attach the deep-read toggle. Called with the paper so the drawer can
-    /// report the change; `onChange` lets the reader persist it.
-    func setDeepRead(available: Bool, isOn: Bool,
-                     onChange: @escaping (Bool) -> Void) {
-        deepAvailable = available
-        deepIsOn = isOn
-        onDeepChange = onChange
+    /// The arc actually in play, which is what the timer segments on.
+    var activeChunks: [GuideChunk] {
+        return deepIsOn ? chunks + deepChunks : chunks
+    }
+
+    /// Highlight the chunk the clock is in. Called on the timer's tick.
+    func setCurrentStep(_ step: Int?) {
+        guard step != currentStep else { return }
+        currentStep = step
         rebuild()
     }
 
-    /// Pass 3's chunks, appended when the checkbox is on. Held rather than
-    /// fetched so the toggle works with no network -- the call to go deeper
-    /// happens mid-paper, which is when the laptop is least likely to answer.
-    func setDeepGuide(_ markdown: String?) {
-        deepMarkdown = markdown
-        rebuild()
-    }
+    /// Re-read one chunk's note after the composer saved it.
+    func refreshNotes() { rebuild() }
 
     @objc private func deepTapped() {
         deepIsOn.toggle()
         onDeepChange?(deepIsOn)
         rebuild()
+        timerBar.setChunks(activeChunks)
+    }
+
+    @objc private func noteTapped(_ sender: UIButton) {
+        let all = activeChunks
+        guard sender.tag >= 0 && sender.tag < all.count else { return }
+        onNoteTap?(all[sender.tag])
     }
 
     private func rebuild() {
@@ -147,48 +161,89 @@ final class GuideDrawer: UIView {
         stack.addArrangedSubview(makeLabel(paperTitle, size: 15, weight: .semibold,
                                            color: UIColor(white: 0.15, alpha: 1)))
 
-        let markdown = deepIsOn && !(deepMarkdown ?? "").isEmpty
-            ? guideMarkdown + "\n\n" + (deepMarkdown ?? "")
-            : guideMarkdown
-
-        guard !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !chunks.isEmpty else {
             stack.addArrangedSubview(makeLabel(
                 "No reading guide for this paper. It is not queued as a rep.",
                 size: 13, weight: .regular, color: UIColor(white: 0.5, alpha: 1)))
             return
         }
 
-        // The toggle sits above the guide, not buried at the end after pass 2:
-        // the decision is made at the close of triage, and a control you have
-        // to scroll four chunks to reach is one you won't use.
-        if deepAvailable {
-            stack.addArrangedSubview(makeDeepToggle())
-        }
+        stack.addArrangedSubview(timerBar)
 
-        for rawLine in markdown.components(separatedBy: "\n") {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { continue }
+        // The toggle sits above the arc, not after pass 2: the decision is made
+        // at the close of triage, and a control four chunks down is one you
+        // won't reach for.
+        if deepAvailable { stack.addArrangedSubview(makeDeepToggle()) }
 
-            if line.hasPrefix("#") {
-                let text = line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
-                stack.addArrangedSubview(makeLabel(text.uppercased(), size: 11,
-                                                   weight: .semibold,
-                                                   color: UIColor(white: 0.45, alpha: 1)))
-            } else if line.hasPrefix("-") || line.hasPrefix("*") {
-                let text = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
-                stack.addArrangedSubview(makeLabel("•  " + text, size: 14,
-                                                   weight: .regular,
-                                                   color: UIColor(white: 0.2, alpha: 1)))
-            } else {
-                stack.addArrangedSubview(makeLabel(line, size: 14, weight: .regular,
-                                                   color: UIColor(white: 0.2, alpha: 1)))
-            }
+        for (i, chunk) in activeChunks.enumerated() {
+            stack.addArrangedSubview(makeChunkCard(chunk, index: i))
         }
     }
 
-    /// A checkbox drawn with text rather than an image set: at this size a
-    /// filled box glyph reads as well as an asset would, and the app ships no
-    /// image catalogue to put one in.
+    private func makeChunkCard(_ chunk: GuideChunk, index: Int) -> UIView {
+        let card = UIView()
+        card.layer.cornerRadius = 9
+        let isCurrent = currentStep == chunk.step
+        card.backgroundColor = isCurrent
+            ? UIColor(red: 1.0, green: 0.97, blue: 0.90, alpha: 1)
+            : UIColor(white: 1, alpha: 0.55)
+        card.layer.borderWidth = isCurrent ? 1.5 : 1
+        card.layer.borderColor = (isCurrent
+            ? UIColor(red: 0.91, green: 0.69, blue: 0.29, alpha: 1)
+            : UIColor(white: 0.88, alpha: 1)).cgColor
+
+        let inner = UIStackView()
+        inner.axis = .vertical
+        inner.spacing = 5
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(inner)
+        NSLayoutConstraint.activate([
+            inner.topAnchor.constraint(equalTo: card.topAnchor, constant: 10),
+            inner.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
+            inner.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
+            inner.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -10)
+        ])
+
+        inner.addArrangedSubview(makeLabel(
+            "\(chunk.step). \(chunk.passName) · \(chunk.minutes) min".uppercased(),
+            size: 10, weight: .semibold, color: UIColor(white: 0.48, alpha: 1)))
+        inner.addArrangedSubview(makeLabel(chunk.title, size: 15, weight: .semibold,
+                                           color: UIColor(white: 0.13, alpha: 1)))
+        inner.addArrangedSubview(makeLabel(chunk.detail, size: 13, weight: .regular,
+                                           color: UIColor(white: 0.28, alpha: 1)))
+        for s in chunk.steps {
+            inner.addArrangedSubview(makeLabel("•  " + s, size: 12, weight: .regular,
+                                               color: UIColor(white: 0.34, alpha: 1)))
+        }
+
+        let existing = noteProvider?(chunk)
+        let b = UIButton(type: .system)
+        b.tag = index
+        b.titleLabel?.font = UIFont.systemFont(ofSize: 13)
+        b.titleLabel?.numberOfLines = 0
+        b.contentHorizontalAlignment = .leading
+        b.contentEdgeInsets = UIEdgeInsets(top: 8, left: 9, bottom: 8, right: 9)
+        b.layer.cornerRadius = 7
+        b.heightAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
+        if let text = existing, !text.isEmpty {
+            // Showing the response back is the point: a chunk you've answered
+            // should look answered, so the arc doubles as a record of the read.
+            b.setTitle("🗒  " + text, for: .normal)
+            b.setTitleColor(UIColor(white: 0.2, alpha: 1), for: .normal)
+            b.backgroundColor = UIColor(red: 0.93, green: 0.95, blue: 0.93, alpha: 1)
+        } else {
+            b.setTitle("＋  Your response", for: .normal)
+            b.setTitleColor(UIColor(white: 0.45, alpha: 1), for: .normal)
+            b.backgroundColor = UIColor(white: 0.95, alpha: 1)
+        }
+        b.addTarget(self, action: #selector(noteTapped(_:)), for: .touchUpInside)
+        inner.addArrangedSubview(b)
+
+        return card
+    }
+
+    /// A checkbox drawn with text rather than an image set: at this size a box
+    /// glyph reads as well as an asset would.
     private func makeDeepToggle() -> UIView {
         let b = UIButton(type: .system)
         b.setTitle((deepIsOn ? "☑︎" : "☐") + "  Deep read — adds pass 3",
@@ -203,8 +258,8 @@ final class GuideDrawer: UIView {
             ? UIColor(red: 0.90, green: 0.95, blue: 0.92, alpha: 1)
             : UIColor(white: 0.94, alpha: 1)
         b.layer.cornerRadius = 7
-        // 44pt is the documented minimum touch target, and this is a control
-        // you reach for with the hand that is holding the iPad.
+        // 44pt is the documented minimum touch target, and this is reached for
+        // with the hand holding the iPad.
         b.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         b.addTarget(self, action: #selector(deepTapped), for: .touchUpInside)
         return b

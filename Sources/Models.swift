@@ -28,15 +28,64 @@ struct Paper: Codable {
     /// The reading plan's own name for this paper, so the toggle can be sent
     /// without the app knowing how the plan spells its filenames.
     let planPaper: String?
+    /// The arc as data rather than prose: what segments the timer, what the
+    /// drawer draws, and what a note gets attached to.
+    let chunks: [GuideChunk]?
+    /// Pass 3's chunks, appended when the deep-read box is ticked.
+    let chunksDeep: [GuideChunk]?
 
     enum CodingKeys: String, CodingKey {
-        case key, title, filename
+        case key, title, filename, chunks
         case pageOffset = "page_offset"
         case guideMarkdown = "guide"
         case repMinutes = "rep_minutes"
         case guideDeep = "guide_deep"
         case deepRead = "deep_read"
         case planPaper = "plan_paper"
+        case chunksDeep = "chunks_deep"
+    }
+}
+
+/// One step of the reading arc: triage, or one 15-minute pass-2/3 chunk.
+struct GuideChunk: Codable {
+    let step: Int
+    let pass: Int
+    let passName: String
+    let title: String
+    let detail: String
+    /// Triage's four internal moves; empty for the chunked passes.
+    let steps: [String]
+    let minutes: Int
+
+    enum CodingKeys: String, CodingKey {
+        case step, pass, title, detail, steps, minutes
+        case passName = "pass_name"
+    }
+}
+
+/// A response written against one chunk of the guide.
+///
+/// Kept apart from `Annotation` deliberately: an annotation is anchored to a
+/// passage of the paper, and this is anchored to a step of the *method*. They
+/// answer different questions and land in different places in the vault, so
+/// merging them to save a type would lose that.
+struct GuideNote: Codable {
+    let id: String
+    let paperKey: String
+    let step: Int
+    let chunkTitle: String
+    var text: String
+    var voiceNote: String?
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, step, text
+        case paperKey = "paper_key"
+        case chunkTitle = "chunk_title"
+        case voiceNote = "voice_note"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
     }
 }
 
