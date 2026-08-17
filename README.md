@@ -1,4 +1,4 @@
-# Midstream — a reading app for the iPad mini 2
+# Passages — a reading app for the iPad mini 2
 
 A native iOS reader for the PhD reading queue, built because the frictions that
 actually bite are workflow frictions GoodReader cannot fix: no timer in the
@@ -65,7 +65,7 @@ No Mac required. GitHub Actions builds an unsigned `.ipa`; AltStore on Windows
 signs it with a free Apple ID at install time.
 
 ```
-Push to main  →  macos-14 runner, Xcode 15.4  →  Midstream.ipa artifact
+Push to main  →  macos-14 runner, Xcode 15.4  →  Passages.ipa artifact
                  → download → AltServer (Windows) → iPad
 ```
 

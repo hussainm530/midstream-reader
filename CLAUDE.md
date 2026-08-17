@@ -1,4 +1,4 @@
-# CLAUDE.md — Midstream reader
+# CLAUDE.md — Passages reader
 
 Guidance for Claude Code working in this repo. Read before changing anything.
 

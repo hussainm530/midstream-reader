@@ -133,10 +133,10 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
         let pageIndex = document.index(for: page)
         let bounds = selection.bounds(for: page)
 
-        // A comment-free highlight is a Quote, matching the rule the vault's
+        // A comment-free highlight is General, matching the rule the vault's
         // own pull already applies -- so the common case needs no interaction
         // beyond selecting the text.
-        let resolved = category ?? (comment.isEmpty && voice == nil ? .quote : nil)
+        let resolved = category ?? (comment.isEmpty && voice == nil ? .general : nil)
 
         let annotation = Annotation(
             id: UUID().uuidString,

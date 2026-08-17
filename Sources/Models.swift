@@ -29,20 +29,27 @@ struct Paper: Codable {
 /// Categories match the vault's own scheme, so the pull needs no translation
 /// step. Chosen by tapping a chip -- the point is that most annotations should
 /// need no typing at all.
+/// Order is the chip order, left to right, and General leads because it is the
+/// default for an untyped highlight.
+///
+/// Quote was removed in Aug 2026: every annotation stores the actual selected
+/// passage, so *all* of them are quotes and the category sorted nothing.
+/// Argument replaced the gap it left -- for a passage that is neither a result
+/// nor a method, but carries the paper's case.
 enum AnnotationCategory: String, Codable, CaseIterable {
-    case quote = "Quote"
-    case finding = "Finding"
-    case critique = "Critique"
-    case methodology = "Methodology"
     case general = "General"
+    case argument = "Argument"
+    case finding = "Finding"
+    case methodology = "Methodology"
+    case critique = "Critique"
 
     var chipLabel: String {
         switch self {
-        case .quote: return "Quote"
-        case .finding: return "Finding"
-        case .critique: return "Critique"
-        case .methodology: return "Method"
         case .general: return "General"
+        case .argument: return "Argument"
+        case .finding: return "Finding"
+        case .methodology: return "Method"
+        case .critique: return "Critique"
         }
     }
 }

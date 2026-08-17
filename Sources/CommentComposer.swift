@@ -9,7 +9,7 @@ import UIKit
 ///    the will-change-frame notification. GoodReader's popup does not reflow,
 ///    so half the field is occluded on a 7.9" screen.
 /// 2. **Most annotations need no typing at all.** Category chips are one tap,
-///    and a highlight with no comment is a Quote by default — the same rule the
+///    and a highlight with no comment is General by default — the same rule the
 ///    vault's pull already uses. Typing is for when there is something to say.
 /// 3. **Speaking is a first-class input.** Hold to record; the audio syncs and
 ///    is transcribed by Moonshine on the laptop.

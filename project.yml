@@ -1,6 +1,6 @@
-name: Midstream
+name: Passages
 options:
-  bundleIdPrefix: com.mak.midstream
+  bundleIdPrefix: com.mak.passages
   # iOS 12.0 is the floor the hardware forces (iPad mini 2, A7, iOS 12.5.8).
   # This rules out SwiftUI (13.0), scene lifecycle (13.0), and the whole
   # semantic-colour API. Everything here is UIKit + PDFKit, deliberately.
@@ -30,7 +30,7 @@ settings:
     CODE_SIGNING_ALLOWED: NO
 
 targets:
-  Midstream:
+  Passages:
     type: application
     platform: iOS
     sources:
@@ -38,7 +38,7 @@ targets:
     info:
       path: Resources/Info.plist
       properties:
-        CFBundleDisplayName: Midstream
+        CFBundleDisplayName: Passages
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         UILaunchStoryboardName: ""
