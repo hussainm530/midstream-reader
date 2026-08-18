@@ -230,8 +230,7 @@ final class GuideDrawer: UIView {
             // should look answered, so the arc doubles as a record of the read.
             // Clipped, because a long response overflowed the button instead
             // of ending -- the full text is one tap away in the composer.
-            let flat = text.replacingOccurrences(of: "
-", with: " ")
+            let flat = text.replacingOccurrences(of: "\n", with: " ")
             let preview = flat.count > 140
                 ? String(flat.prefix(140)).trimmingCharacters(in: .whitespaces) + "…"
                 : flat
