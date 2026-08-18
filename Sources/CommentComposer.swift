@@ -227,6 +227,8 @@ final class CommentComposer: UIView, UITextViewDelegate {
     /// meaningless row of chips on screen invites a meaningless tap.
     func presentNote(chunkTitle: String, existing: String) {
         isNoteMode = true
+        pendingVoiceNote = nil
+        recordingLabel.isHidden = true
         quoteLabel.text = chunkTitle
         textView.text = existing
         selectedCategory = nil
@@ -240,6 +242,8 @@ final class CommentComposer: UIView, UITextViewDelegate {
     func present(quote: String) {
         isNoteMode = false
         chipRow.isHidden = false
+        pendingVoiceNote = nil
+        recordingLabel.isHidden = true
         quoteLabel.text = "“" + quote.trimmingCharacters(in: .whitespacesAndNewlines) + "”"
         textView.text = ""
         selectedCategory = nil
@@ -259,11 +263,21 @@ final class CommentComposer: UIView, UITextViewDelegate {
 
     // MARK: - Voice
 
+    /// Prompt for the microphone before it is ever needed.
+    func prepareMicrophone() { recorder.prepare() }
+
     @objc private func micDown() {
+        // Say so *before* the hold, rather than leaving a silent no-op. A
+        // denied microphone previously looked exactly like a successful
+        // recording, which is how 32 annotations came back with no audio.
+        if recorder.permission == .denied {
+            showMicState("Microphone denied — Settings › Passages › Microphone",
+                         bad: true)
+            return
+        }
         recorder.start(paperKey: currentPaperKey) { started in
             guard started else {
-                self.recordingLabel.text = "no mic access"
-                self.recordingLabel.isHidden = false
+                self.showMicState("Couldn't start recording", bad: true)
                 return
             }
             self.recordingLabel.isHidden = false
@@ -278,15 +292,34 @@ final class CommentComposer: UIView, UITextViewDelegate {
     }
 
     @objc private func micUp() {
-        guard recorder.isRecording else { return }
+        guard recorder.isRecording else {
+            // Not a no-op any more. Reaching here means the hold never became
+            // a recording, and the reader needs to know that now rather than
+            // discovering it on the laptop a day later.
+            stopRecordingUI()
+            if recorder.permission != .granted {
+                showMicState("No microphone access — nothing recorded", bad: true)
+            }
+            return
+        }
         pendingVoiceNote = recorder.stop()
         stopRecordingUI()
-        if let name = pendingVoiceNote {
-            recordingLabel.isHidden = false
-            recordingLabel.textColor = UIColor(white: 0.4, alpha: 1)
-            recordingLabel.text = "voice note attached"
-            _ = name
+        if pendingVoiceNote != nil {
+            showMicState("✓ voice note attached", bad: false)
+        } else {
+            showMicState("Too short — nothing recorded", bad: true)
         }
+    }
+
+    /// One place that reports capture state, so it can never be ambiguous.
+    /// Stays on screen until the composer is dismissed rather than fading.
+    private func showMicState(_ text: String, bad: Bool) {
+        recordingLabel.numberOfLines = 2
+        recordingLabel.textColor = bad
+            ? UIColor(red: 0.7, green: 0.2, blue: 0.15, alpha: 1)
+            : UIColor(red: 0.18, green: 0.43, blue: 0.31, alpha: 1)
+        recordingLabel.text = text
+        recordingLabel.isHidden = false
     }
 
     private func stopRecordingUI() {

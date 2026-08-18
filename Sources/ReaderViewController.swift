@@ -117,6 +117,10 @@ final class ReaderViewController: UIViewController, PDFViewDelegate {
 
         composer.install(in: view)
         composer.currentPaperKey = paper.key
+        // Ask for the microphone now, not on the first hold. See
+        // VoiceRecorder.prepare() -- requesting it inside the gesture is what
+        // silently lost every voice note on 18 Aug.
+        composer.prepareMicrophone()
         composer.onSave = { [weak self] comment, category, voice in
             self?.saveAnnotation(comment: comment, category: category, voice: voice)
         }

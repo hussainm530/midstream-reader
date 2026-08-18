@@ -187,6 +187,27 @@ final class SyncClient {
         session.dataTask(with: request).resume()
     }
 
+    /// Report a read/unread mark. Fire and forget, like every other write.
+    func setRead(_ paper: Paper, _ read: Bool) {
+        guard var request = jsonRequest(path: "api/read") else { return }
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["paper_key": paper.key, "title": paper.title,
+                             "read": read])
+        session.dataTask(with: request).resume()
+    }
+
+    /// Tell the laptop a paper left the device, with what it has to show for
+    /// itself, so the vault side can ask about an offload that captured
+    /// nothing rather than assuming the read happened.
+    func reportOffload(_ paper: Paper, annotations: Int, guideNotes: Int) {
+        guard var request = jsonRequest(path: "api/offload") else { return }
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["paper_key": paper.key, "title": paper.title,
+                             "annotation_count": annotations,
+                             "guide_note_count": guideNotes])
+        session.dataTask(with: request).resume()
+    }
+
     private func jsonRequest(path: String) -> URLRequest? {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"

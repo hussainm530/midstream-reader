@@ -33,6 +33,8 @@ struct Paper: Codable {
     let chunks: [GuideChunk]?
     /// Pass 3's chunks, appended when the deep-read box is ticked.
     let chunksDeep: [GuideChunk]?
+    /// The reading plan's week, used as the library's one level of hierarchy.
+    let group: String?
 
     enum CodingKeys: String, CodingKey {
         case key, title, filename, chunks
@@ -43,6 +45,7 @@ struct Paper: Codable {
         case deepRead = "deep_read"
         case planPaper = "plan_paper"
         case chunksDeep = "chunks_deep"
+        case group
     }
 }
 

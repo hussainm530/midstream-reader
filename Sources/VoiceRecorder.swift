@@ -18,6 +18,25 @@ final class VoiceRecorder: NSObject {
 
     var isRecording: Bool { return recorder?.isRecording ?? false }
 
+    /// Current microphone permission, without prompting.
+    var permission: AVAudioSession.RecordPermission {
+        return AVAudioSession.sharedInstance().recordPermission
+    }
+
+    /// Ask for the microphone *before* the first press-and-hold.
+    ///
+    /// This is the bug that lost every voice note on 18 Aug: permission was
+    /// requested inside the touch-down handler, so the very first hold raised
+    /// the system alert instead of recording. By the time the alert was
+    /// answered the finger was long off the button, touch-up had already run,
+    /// and `stop()` found nothing to stop. Silently. Prompting when the reader
+    /// opens means the alert can never race the gesture.
+    func prepare() {
+        let session = AVAudioSession.sharedInstance()
+        guard session.recordPermission == .undetermined else { return }
+        session.requestRecordPermission { _ in }
+    }
+
     /// Elapsed seconds, for the level/duration readout while recording.
     var duration: TimeInterval { return recorder?.currentTime ?? 0 }
 

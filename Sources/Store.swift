@@ -19,6 +19,7 @@ final class Store {
     private let repsFile: URL
     private let deepReadsFile: URL
     private let guideNotesFile: URL
+    private let readFile: URL
 
     private(set) var papers: [Paper] = []
     private(set) var annotations: [Annotation] = []
@@ -28,6 +29,9 @@ final class Store {
     /// library refresh and this must survive that.
     private var deepReads: [String: Bool] = [:]
     private(set) var guideNotes: [GuideNote] = []
+    /// Paper key -> read. Its own file for the same reason deep-reads are:
+    /// papers.json is replaced wholesale on every library refresh.
+    private var readFlags: [String: Bool] = [:]
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -51,6 +55,7 @@ final class Store {
         repsFile = root.appendingPathComponent("reps.json")
         deepReadsFile = root.appendingPathComponent("deep_reads.json")
         guideNotesFile = root.appendingPathComponent("guide_notes.json")
+        readFile = root.appendingPathComponent("read.json")
 
         for dir in [pdfDir, voiceDir] {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -66,6 +71,7 @@ final class Store {
         reps = decodeFile(repsFile) ?? []
         deepReads = decodeFile(deepReadsFile) ?? [:]
         guideNotes = decodeFile(guideNotesFile) ?? []
+        readFlags = decodeFile(readFile) ?? [:]
     }
 
     private func decodeFile<T: Decodable>(_ url: URL) -> T? {
@@ -122,6 +128,25 @@ final class Store {
 
     func isDownloaded(_ paper: Paper) -> Bool {
         return fm.fileExists(atPath: localURL(for: paper).path)
+    }
+
+    // MARK: - Read and offload
+
+    func isRead(_ paperKey: String) -> Bool { return readFlags[paperKey] ?? false }
+
+    /// Marking read is a human claim, made deliberately. It is deliberately
+    /// *not* inferred from offloading or from annotation count -- a paper can
+    /// be annotated heavily and not finished, or read closely and not marked
+    /// up at all.
+    func setRead(_ paperKey: String, _ read: Bool) {
+        readFlags[paperKey] = read
+        write(readFlags, to: readFile)
+    }
+
+    /// Delete the local PDF. Annotations, guide notes and the read flag all
+    /// stay: offloading frees space, it does not discard the work.
+    func offload(_ paper: Paper) {
+        try? fm.removeItem(at: localURL(for: paper))
     }
 
     // MARK: - Guide notes

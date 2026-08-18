@@ -228,7 +228,15 @@ final class GuideDrawer: UIView {
         if let text = existing, !text.isEmpty {
             // Showing the response back is the point: a chunk you've answered
             // should look answered, so the arc doubles as a record of the read.
-            b.setTitle("🗒  " + text, for: .normal)
+            // Clipped, because a long response overflowed the button instead
+            // of ending -- the full text is one tap away in the composer.
+            let flat = text.replacingOccurrences(of: "
+", with: " ")
+            let preview = flat.count > 140
+                ? String(flat.prefix(140)).trimmingCharacters(in: .whitespaces) + "…"
+                : flat
+            b.titleLabel?.lineBreakMode = .byTruncatingTail
+            b.setTitle("🗒  " + preview, for: .normal)
             b.setTitleColor(UIColor(white: 0.2, alpha: 1), for: .normal)
             b.backgroundColor = UIColor(red: 0.93, green: 0.95, blue: 0.93, alpha: 1)
         } else {
