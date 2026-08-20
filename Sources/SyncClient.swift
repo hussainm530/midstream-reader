@@ -13,9 +13,39 @@ import Foundation
 final class SyncClient {
     static let shared = SyncClient()
 
-    /// The ThinkPad's Tailscale address. Stable, and only reachable on the
-    /// tailnet, which is also the only authentication this has.
-    var baseURL = URL(string: "http://100.117.163.83:8761")!
+    /// Which machine on the tailnet is serving the reading queue.
+    ///
+    /// This moved from a hard-coded constant to a setting because the server
+    /// migrated to the always-on laptop: the ThinkPad is the machine actually
+    /// being worked on, so it sleeps, and a sleeping server is indistinguishable
+    /// from a broken app from inside the reader.
+    ///
+    /// Chosen from a fixed list in Settings.app, not typed freehand, because
+    /// every candidate host also needs an `NSExceptionDomains` entry in
+    /// Info.plist to be reachable over plain HTTP. A hand-typed address would
+    /// parse fine, resolve fine, and then be refused by App Transport Security
+    /// with no visible error -- which reads as "sync is broken" and would cost
+    /// exactly the debugging session this comment exists to prevent.
+    static let nodes = [
+        "100.77.134.90": "Always-on laptop",
+        "100.117.163.83": "ThinkPad",
+    ]
+    static let defaultHost = "100.77.134.90"
+
+    var baseURL: URL {
+        get {
+            let host = UserDefaults.standard.string(forKey: "serverAddress")
+                ?? SyncClient.defaultHost
+            // An unrecognised host means the setting predates a node rename;
+            // fall back rather than issue requests ATS is going to refuse.
+            let safe = SyncClient.nodes[host] != nil ? host : SyncClient.defaultHost
+            return URL(string: "http://\(safe):8761")!
+        }
+        set {
+            guard let host = newValue.host else { return }
+            UserDefaults.standard.set(host, forKey: "serverAddress")
+        }
+    }
 
     private let session: URLSession
     private let encoder: JSONEncoder = {

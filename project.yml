@@ -42,6 +42,11 @@ targets:
       # compiled in. Info.plist living under Resources/ is not the same thing
       # as Resources/ being a source.
       - path: Resources/Assets.xcassets
+      # Same trap as the asset catalogue above: a Settings.bundle that isn't
+      # listed here is committed, ignored by the build, and shows up as
+      # "Passages has no entry in Settings.app" with nothing in the log.
+      - path: Resources/Settings.bundle
+        buildPhase: resources
     info:
       path: Resources/Info.plist
       properties:
@@ -66,12 +71,22 @@ targets:
         NSMicrophoneUsageDescription: >-
           Record spoken annotations while reading. Audio stays on the device
           until it syncs to your own laptop.
-        # The reader talks to the ThinkPad over Tailscale, which is plain
-        # HTTP on a private tailnet -- no public traffic, so ATS is relaxed
-        # for that host only rather than globally.
+        # The reader talks to a laptop over Tailscale, which is plain HTTP on a
+        # private tailnet -- no public traffic, so ATS is relaxed for those
+        # hosts only rather than globally.
+        #
+        # Both nodes are listed because the server address is now selectable in
+        # Settings.app (see SyncClient.nodes). These two lists must stay in
+        # step: a node offered in Settings but missing here is selectable,
+        # reaches the network layer, and is then refused by ATS silently.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: false
           NSExceptionDomains:
+            # The always-on laptop -- the default, because it does not sleep.
+            100.77.134.90:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: false
+            # The ThinkPad -- kept as a fallback for when the server is run there.
             100.117.163.83:
               NSExceptionAllowsInsecureHTTPLoads: true
               NSIncludesSubdomains: false
